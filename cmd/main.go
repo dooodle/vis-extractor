@@ -105,7 +105,7 @@ func writeScalarOrDiscrete(w io.Writer, limit int) {
 		}
 
 		for subRows.Next() {
-			count := 0
+			var count int
 			err := subRows.Scan(&count)
 			if err != nil {
 				fmt.Println(err)
@@ -145,7 +145,7 @@ func writeScalarOrDiscrete(w io.Writer, limit int) {
 	}
 
 	for _, t := range triples {
-		str := t.Serialize(rdf.Turtle)
+		str := t.Serialize(rdf.NTriples)
 		w.Write([]byte(str))
 	}
 
@@ -187,7 +187,7 @@ func writeTableColS(w io.Writer) {
 	}
 
 	for _, t := range triples {
-		str := t.Serialize(rdf.Turtle)
+		str := t.Serialize(rdf.NTriples)
 		w.Write([]byte(str))
 	}
 }
@@ -231,7 +231,7 @@ func writeColsDataType(w io.Writer) {
 	}
 
 	for _, t := range triples {
-		str := t.Serialize(rdf.Turtle)
+		str := t.Serialize(rdf.NTriples)
 		w.Write([]byte(str))
 	}
 }
