@@ -2,6 +2,7 @@ package main
 
 import (
 	"database/sql"
+	"flag"
 	"fmt"
 	"github.com/knakk/rdf"
 	_ "github.com/lib/pq"
@@ -10,6 +11,7 @@ import (
 	"os"
 )
 
+var fileName = flag.String("f", "","filename to save N-Triple DB")
 // https://newfivefour.com/postgresql-information-schema.html
 
 var user = os.Getenv("VIS_MONDIAL_USER")
@@ -41,12 +43,22 @@ func init() {
 }
 
 func main() {
+	flag.Parse()
+	var w io.Writer = os.Stdout
+	if *fileName != "" {
+		f, err  := os.Create(*fileName)
+		if err !=nil {
+			log.Fatal(err)
+		}
+		defer f.Close()
+		w = f
+	}
 	fmt.Printf("starting db graph extractor for %s on %s:%s\n", dbname, host, port)
 	//q := "SELECT table_name FROM information_schema.tables WHERE table_schema='public'"
 	//WriteQuery(os.Stdout,q,false,false)
-	writeTableColS(os.Stdout)
-	writeColsDataType(os.Stdout)
-	writeScalarOrDiscrete(os.Stdout, 100)
+	writeTableColS(w)
+	writeColsDataType(w)
+	writeScalarOrDiscrete(w, 100)
 }
 
 //– discrete dimensions have a relatively small number of distinct values, that
@@ -59,7 +71,7 @@ func main() {
 //when extracting use limit to decide if its scalar or discrete
 func writeScalarOrDiscrete(w io.Writer, limit int) {
 	//q := "SELECT table_name FROM information_schema.tables WHERE table_schema='public'"
-	fmt.Println("entering")
+	log.Println("entering")
 	q := `SELECT columns.table_name,
 		  columns.column_name
 	FROM information_schema.columns
