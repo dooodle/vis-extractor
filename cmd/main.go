@@ -11,8 +11,11 @@ import (
 	"os"
 )
 
+// note file suffix for a n triple is .nt
 var fileName = flag.String("f", "","filename to save N-Triple DB")
 // https://newfivefour.com/postgresql-information-schema.html
+// https://www.w3.org/TR/n-triples/
+// https://en.wikipedia.org/wiki/N-Triples
 
 var user = os.Getenv("VIS_MONDIAL_USER")
 var dbname = os.Getenv("VIS_MONDIAL_DBNAME")
