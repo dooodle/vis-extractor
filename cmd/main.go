@@ -62,6 +62,7 @@ func main() {
 	writeTableColS(w)
 	writeColsDataType(w)
 	writeScalarOrDiscrete(w, 100)
+	os.Stdout.Sync()
 }
 
 //– discrete dimensions have a relatively small number of distinct values, that
