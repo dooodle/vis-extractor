@@ -1,0 +1,21 @@
+branches:
+  only:
+    - master
+
+sudo: required
+language: go
+env:
+  - GO111MODULE=on
+go:
+  - 1.12.x
+services:
+  - docker
+notifications:
+  slack: dooodle:hots3bBY7zx3Dff7425iO67W
+
+script:
+  - go get github.com/lib/pq
+  - go get -u
+  - CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o extractor ./cmd/main.go
+  - docker build -t dooodle/vis-extractor .
+  - bash docker_push
