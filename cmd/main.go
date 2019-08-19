@@ -13,6 +13,7 @@ import (
 
 // note file suffix for a n triple is .nt
 var fileName = flag.String("f", "","filename to save N-Triple DB")
+var verbose = flag.Bool("v", false, "output extra logging")
 // https://newfivefour.com/postgresql-information-schema.html
 // https://www.w3.org/TR/n-triples/
 // https://en.wikipedia.org/wiki/N-Triples
@@ -56,13 +57,12 @@ func main() {
 		defer f.Close()
 		w = f
 	}
-	fmt.Printf("starting db graph extractor for %s on %s:%s\n", dbname, host, port)
-	//q := "SELECT table_name FROM information_schema.tables WHERE table_schema='public'"
-	//WriteQuery(os.Stdout,q,false,false)
+	if *verbose {
+		fmt.Printf("starting db graph extractor for %s on %s:%s\n", dbname, host, port)
+	}
 	writeTableColS(w)
 	writeColsDataType(w)
 	writeScalarOrDiscrete(w, 100)
-	os.Stdout.Sync()
 }
 
 //– discrete dimensions have a relatively small number of distinct values, that
@@ -74,8 +74,6 @@ func main() {
 
 //when extracting use limit to decide if its scalar or discrete
 func writeScalarOrDiscrete(w io.Writer, limit int) {
-	//q := "SELECT table_name FROM information_schema.tables WHERE table_schema='public'"
-	log.Println("entering")
 	q := `SELECT columns.table_name,
 		  columns.column_name
 	FROM information_schema.columns
