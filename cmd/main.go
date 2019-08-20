@@ -12,8 +12,9 @@ import (
 )
 
 // note file suffix for a n triple is .nt
-var fileName = flag.String("f", "","filename to save N-Triple DB")
+var fileName = flag.String("f", "", "filename to save N-Triple DB")
 var verbose = flag.Bool("v", false, "output extra logging")
+
 // https://newfivefour.com/postgresql-information-schema.html
 // https://www.w3.org/TR/n-triples/
 // https://en.wikipedia.org/wiki/N-Triples
@@ -28,8 +29,9 @@ var sslmode = os.Getenv("VIS_MONDIAL_SSLMODE")
 var db *sql.DB
 
 const (
-	rootPrefix        = "http://dooodle/"
-	colPrefix         = rootPrefix + "column/"
+	rootPrefix = "http://dooodle/"
+	//colPrefix         = rootPrefix + "column/"
+	colMiddle         = "/column/"
 	tablePrefix       = rootPrefix + "entity/"
 	predPrefix        = rootPrefix + "predicate/"
 	dataTypePrefix    = rootPrefix + "dataType/"
@@ -50,8 +52,8 @@ func main() {
 	flag.Parse()
 	var w io.Writer = os.Stdout
 	if *fileName != "" {
-		f, err  := os.Create(*fileName)
-		if err !=nil {
+		f, err := os.Create(*fileName)
+		if err != nil {
 			log.Fatal(err)
 		}
 		defer f.Close()
@@ -109,7 +111,7 @@ func writeScalarOrDiscrete(w io.Writer, limit int) {
 			if err != nil {
 				fmt.Println(err)
 			}
-			subject, _ := rdf.NewIRI(tablePrefix + data.colName)
+			subject, _ := rdf.NewIRI(tablePrefix + data.tableName + colMiddle + data.colName)
 			pred, _ := rdf.NewIRI(predPrefix + "numDistinct")
 			object, _ := rdf.NewLiteral(count)
 			triple := rdf.Triple{
@@ -176,7 +178,7 @@ func writeTableColS(w io.Writer) {
 
 		subject, _ := rdf.NewIRI(tablePrefix + data.tableName)
 		pred, _ := rdf.NewIRI(predPrefix + "hasColumn")
-		object, _ := rdf.NewIRI(colPrefix + data.colName)
+		object, _ := rdf.NewIRI(tablePrefix + data.tableName + colMiddle + data.colName)
 		triple := rdf.Triple{
 			Subj: subject,
 			Pred: pred,
@@ -193,7 +195,9 @@ func writeTableColS(w io.Writer) {
 
 func writeColsDataType(w io.Writer) {
 
-	q := `SELECT columns.column_name,
+	q := `SELECT 
+		  columns.table_name,
+		  columns.column_name,
 		  columns.data_type,
 		  columns.udt_name
 	FROM information_schema.columns
@@ -204,6 +208,7 @@ func writeColsDataType(w io.Writer) {
 	rows, _ := db.Query(q)
 
 	data := struct {
+		tableName string
 		colName  string
 		dataType string
 		udtName  string
@@ -213,12 +218,12 @@ func writeColsDataType(w io.Writer) {
 	triples := []rdf.Triple{}
 
 	for rows.Next() {
-		err := rows.Scan(&(data.colName), &(data.dataType), &(data.udtName))
+		err := rows.Scan(&(data.tableName),&(data.colName), &(data.dataType), &(data.udtName))
 		if err != nil {
 			fmt.Println(err)
 		}
 
-		subject, _ := rdf.NewIRI(colPrefix + data.colName)
+		subject, _ := rdf.NewIRI(tablePrefix + data.tableName + colMiddle + data.colName)
 		pred, _ := rdf.NewIRI(predPrefix + "hasDataType")
 		object, _ := rdf.NewIRI(dataTypePrefix + data.udtName)
 		triple := rdf.Triple{
