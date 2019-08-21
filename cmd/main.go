@@ -121,7 +121,7 @@ func writeScalarOrDiscrete(w io.Writer, limit int) {
 			}
 			triples = append(triples, triple)
 
-			dSubject, _ := rdf.NewIRI(tablePrefix + data.colName)
+			dSubject, _ := rdf.NewIRI(tablePrefix + data.tableName + colMiddle + data.colName)
 			dPred, _ := rdf.NewIRI(predPrefix + "hasDimension")
 			var dObject rdf.IRI
 			switch {
