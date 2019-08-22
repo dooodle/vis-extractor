@@ -65,6 +65,7 @@ func main() {
 	writeTableColS(w)
 	writeColsDataType(w)
 	writeScalarOrDiscrete(w, 100)
+	writeKeys(w)
 }
 
 //– discrete dimensions have a relatively small number of distinct values, that
@@ -202,6 +203,52 @@ func writeTableColS(w io.Writer) {
 		str := t.Serialize(rdf.NTriples)
 		w.Write([]byte(str))
 	}
+}
+
+func writeKeys(w io.Writer) {
+	q := `select tc.table_schema, tc.table_name, kc.column_name
+             from information_schema.table_constraints tc
+             join information_schema.key_column_usage kc 
+             on kc.table_name = tc.table_name and kc.table_schema = tc.table_schema and kc.constraint_name = tc.constraint_name
+             where tc.constraint_type = 'PRIMARY KEY'
+             and kc.ordinal_position is not null
+             order by tc.table_schema,
+             tc.table_name,
+             kc.position_in_unique_constraint;`
+
+	rows, _ := db.Query(q)
+
+	data := struct {
+		tableSchema string
+		tableName   string
+		colName     string
+	}{}
+
+	defer rows.Close()
+	triples := []rdf.Triple{}
+
+	for rows.Next() {
+		err := rows.Scan(&(data.tableSchema), &(data.tableName), &(data.colName))
+		if err != nil {
+			fmt.Println(err)
+		}
+
+		subject, _ := rdf.NewIRI(tablePrefix + data.tableName)
+		pred, _ := rdf.NewIRI(predPrefix + "hasKey")
+		object, _ := rdf.NewIRI(tablePrefix + data.tableName + colMiddle + data.colName)
+		triple := rdf.Triple{
+			Subj: subject,
+			Pred: pred,
+			Obj:  object,
+		}
+		triples = append(triples, triple)
+	}
+
+	for _, t := range triples {
+		str := t.Serialize(rdf.NTriples)
+		w.Write([]byte(str))
+	}
+
 }
 
 func writeColsDataType(w io.Writer) {
