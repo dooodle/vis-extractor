@@ -76,8 +76,17 @@ func main() {
 
 //when extracting use limit to decide if its scalar or discrete
 func writeScalarOrDiscrete(w io.Writer, limit int) {
-	q := `SELECT columns.table_name,
-		  columns.column_name
+	// q := `SELECT columns.table_name,
+	// 	  columns.column_name
+	// FROM information_schema.columns
+	// LEFT JOIN information_schema.tables ON columns.table_name = tables.table_name
+	// WHERE tables.table_schema = 'public'
+	// `
+	q := `SELECT 
+		  columns.table_name,
+		  columns.column_name,
+		  columns.data_type,
+		  columns.udt_name
 	FROM information_schema.columns
 	LEFT JOIN information_schema.tables ON columns.table_name = tables.table_name
 	WHERE tables.table_schema = 'public' 
@@ -88,13 +97,15 @@ func writeScalarOrDiscrete(w io.Writer, limit int) {
 	data := struct {
 		tableName string
 		colName   string
+		dataType  string
+		udtName   string
 	}{}
 
 	defer rows.Close()
 	triples := []rdf.Triple{}
 
 	for rows.Next() {
-		err := rows.Scan(&(data.tableName), &(data.colName))
+		err := rows.Scan(&(data.tableName), &(data.colName), &(data.dataType), &(data.udtName))
 		if err != nil {
 			fmt.Println(err)
 		}
@@ -130,7 +141,7 @@ func writeScalarOrDiscrete(w io.Writer, limit int) {
 				if err != nil {
 					fmt.Println(err)
 				}
-			default:
+			case data.dataType == "integer" || data.dataType == "numeric":
 				dObject, err = rdf.NewIRI(scalarDimension)
 				if err != nil {
 					fmt.Println(err)
@@ -209,19 +220,20 @@ func writeColsDataType(w io.Writer) {
 
 	data := struct {
 		tableName string
-		colName  string
-		dataType string
-		udtName  string
+		colName   string
+		dataType  string
+		udtName   string
 	}{}
 
 	defer rows.Close()
 	triples := []rdf.Triple{}
 
 	for rows.Next() {
-		err := rows.Scan(&(data.tableName),&(data.colName), &(data.dataType), &(data.udtName))
+		err := rows.Scan(&(data.tableName), &(data.colName), &(data.dataType), &(data.udtName))
 		if err != nil {
 			fmt.Println(err)
 		}
+		//		fmt.Println(data.colName, data.dataType)
 
 		subject, _ := rdf.NewIRI(tablePrefix + data.tableName + colMiddle + data.colName)
 		pred, _ := rdf.NewIRI(predPrefix + "hasDataType")
