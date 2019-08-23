@@ -66,9 +66,9 @@ func main() {
 	}
 	writeTableColS(w)
 	writeColsDataType(w)
-	writeScalarOrDiscrete(w, 100)
+	counts := writeScalarOrDiscrete(w, 100)
 	writeKeys(w)
-	_ = writeCompoundKeys(w)
+	_ = writeCompoundKeys(w, counts)
 	//	fmt.Println(keys)
 }
 
@@ -80,7 +80,8 @@ func main() {
 //represented by a channel associated with a mark.
 
 //when extracting use limit to decide if its scalar or discrete
-func writeScalarOrDiscrete(w io.Writer, limit int) {
+func writeScalarOrDiscrete(w io.Writer, limit int) map[string]int {
+	counts := map[string]int{}
 	// q := `SELECT columns.table_name,
 	// 	  columns.column_name
 	// FROM information_schema.columns
@@ -136,7 +137,7 @@ func writeScalarOrDiscrete(w io.Writer, limit int) {
 				Obj:  object,
 			}
 			triples = append(triples, triple)
-
+			counts[data.tableName+"/"+data.colName] = count
 			dSubject, _ := rdf.NewIRI(tablePrefix + data.tableName + colMiddle + data.colName)
 			dPred, _ := rdf.NewIRI(predPrefix + "hasDimension")
 			var dObject rdf.IRI
@@ -166,6 +167,7 @@ func writeScalarOrDiscrete(w io.Writer, limit int) {
 		w.Write([]byte(str))
 	}
 
+	return counts
 }
 
 func writeTableColS(w io.Writer) {
@@ -255,7 +257,7 @@ func writeKeys(w io.Writer) {
 
 }
 
-func writeCompoundKeys(w io.Writer) map[string][]string {
+func writeCompoundKeys(w io.Writer, counts map[string]int) map[string][]string {
 	q := `select tc.table_schema, tc.table_name, kc.column_name
              from information_schema.table_constraints tc
              join information_schema.key_column_usage kc 
@@ -295,35 +297,14 @@ func writeCompoundKeys(w io.Writer) map[string][]string {
 	for k, v := range keys {
 		// need to write out all possible poirs of keys
 		if len(v) > 1 {
-			subsets(w, k, v)
+			subsets(w, counts, k, v)
 		}
 	}
 
-	// for rows.Next() {
-	// 	err := rows.Scan(&(data.tableSchema), &(data.tableName), &(data.colName))
-	// 	if err != nil {
-	// 		fmt.Println(err)
-	// 	}
-
-	// 	subject, _ := rdf.NewIRI(tablePrefix + data.tableName)
-	// 	pred, _ := rdf.NewIRI(predPrefix + "hasKey")
-	// 	object, _ := rdf.NewIRI(tablePrefix + data.tableName + colMiddle + data.colName)
-	// 	triple := rdf.Triple{
-	// 		Subj: subject,
-	// 		Pred: pred,
-	// 		Obj:  object,
-	// 	}
-	// 	triples = append(triples, triple)
-	// }
-
-	// for _, t := range triples {
-	// 	str := t.Serialize(rdf.NTriples)
-	// 	w.Write([]byte(str))
-	// }
 	return keys
 }
 
-func subsets(w io.Writer, entity string, keys []string) {
+func subsets(w io.Writer, counts map[string]int, entity string, keys []string) {
 	n := len(keys)
 	var subset = make([]string, 0, n)
 	triples := []rdf.Triple{}
@@ -339,27 +320,29 @@ func subsets(w io.Writer, entity string, keys []string) {
 					Pred: pred,
 					Obj:  object,
 				}
-				// triples = append(triples, triple)
-				// subject, _ := rdf.NewIRI(tablePrefix + entity + compoundMiddle + subset[0] + "/" + subset[1])
-				// pred, _ := rdf.NewIRI(predPrefix + "hasCompoundKey")
-				// object, _ := rdf.NewIRI(tablePrefix + entity + compoundMiddle + subset[0] + "/" + subset[1])
-				// triple := rdf.Triple{
-				// 	Subj: subject,
-				// 	Pred: pred,
-				// 	Obj:  object,
-				// }
-				// triples = append(triples, triple)
-
-				// subject, _ := rdf.NewIRI(tablePrefix + entity + compoundMiddle + subset[0] + "/" + subset[1])
-				// pred, _ := rdf.NewIRI(predPrefix + "hasCompoundKey")
-				// object, _ := rdf.NewIRI(tablePrefix + entity + compoundMiddle + subset[0] + "/" + subset[1])
-				// triple := rdf.Triple{
-				// 	Subj: subject,
-				// 	Pred: pred,
-				// 	Obj:  object,
-				// }
 				triples = append(triples, triple)
+				switch {
+				case counts[entity+"/"+subset[0]] > counts[entity+"/"+subset[1]]:
+					subject, _ := rdf.NewIRI(tablePrefix + entity + compoundMiddle + subset[0] + "/" + subset[1])
+					pred, _ := rdf.NewIRI(predPrefix + "hasStrongKey")
+					object, _ := rdf.NewIRI(tablePrefix + entity + colMiddle + subset[0])
+					triple := rdf.Triple{
+						Subj: subject,
+						Pred: pred,
+						Obj:  object,
+					}
+					triples = append(triples, triple)
+					subject, _ = rdf.NewIRI(tablePrefix + entity + compoundMiddle + subset[0] + "/" + subset[1])
+					pred, _ = rdf.NewIRI(predPrefix + "hasWeakKey")
+					object, _ = rdf.NewIRI(tablePrefix + entity + colMiddle + subset[1])
+					triple = rdf.Triple{
+						Subj: subject,
+						Pred: pred,
+						Obj:  object,
+					}
+					triples = append(triples, triple)
 
+				}
 			}
 			return
 		}
