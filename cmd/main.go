@@ -29,14 +29,16 @@ var sslmode = os.Getenv("VIS_MONDIAL_SSLMODE")
 var db *sql.DB
 
 const (
-	rootPrefix = "http://dooodle/"
-	//colPrefix         = rootPrefix + "column/"
+	rootPrefix        = "http://dooodle/"
 	colMiddle         = "/column/"
+	compoundMiddle    = "/compound/"
 	tablePrefix       = rootPrefix + "entity/"
 	predPrefix        = rootPrefix + "predicate/"
 	dataTypePrefix    = rootPrefix + "dataType/"
 	discreteDimension = rootPrefix + "dimension/discrete"
 	scalarDimension   = rootPrefix + "dimension/scalar"
+	similarCond       = rootPrefix + "cond/similar"
+	complete          = rootPrefix + "cond/complete"
 )
 
 func init() {
@@ -66,6 +68,8 @@ func main() {
 	writeColsDataType(w)
 	writeScalarOrDiscrete(w, 100)
 	writeKeys(w)
+	_ = writeCompoundKeys(w)
+	//	fmt.Println(keys)
 }
 
 //– discrete dimensions have a relatively small number of distinct values, that
@@ -244,6 +248,130 @@ func writeKeys(w io.Writer) {
 		triples = append(triples, triple)
 	}
 
+	for _, t := range triples {
+		str := t.Serialize(rdf.NTriples)
+		w.Write([]byte(str))
+	}
+
+}
+
+func writeCompoundKeys(w io.Writer) map[string][]string {
+	q := `select tc.table_schema, tc.table_name, kc.column_name
+             from information_schema.table_constraints tc
+             join information_schema.key_column_usage kc 
+             on kc.table_name = tc.table_name and kc.table_schema = tc.table_schema and kc.constraint_name = tc.constraint_name
+             where tc.constraint_type = 'PRIMARY KEY'
+             and kc.ordinal_position is not null
+             order by tc.table_schema,
+             tc.table_name,
+             kc.position_in_unique_constraint;`
+
+	rows, _ := db.Query(q)
+
+	data := struct {
+		tableSchema string
+		tableName   string
+		colName     string
+	}{}
+
+	defer rows.Close()
+
+	//collect the keys
+
+	keys := map[string][]string{}
+	for rows.Next() {
+		err := rows.Scan(&(data.tableSchema), &(data.tableName), &(data.colName))
+		if err != nil {
+			fmt.Println(err)
+		}
+		vals, ok := keys[data.tableName]
+		if !ok {
+			vals = []string{}
+		}
+		vals = append(vals, data.colName)
+		keys[data.tableName] = vals
+	}
+
+	for k, v := range keys {
+		// need to write out all possible poirs of keys
+		if len(v) > 1 {
+			subsets(w, k, v)
+		}
+	}
+
+	// for rows.Next() {
+	// 	err := rows.Scan(&(data.tableSchema), &(data.tableName), &(data.colName))
+	// 	if err != nil {
+	// 		fmt.Println(err)
+	// 	}
+
+	// 	subject, _ := rdf.NewIRI(tablePrefix + data.tableName)
+	// 	pred, _ := rdf.NewIRI(predPrefix + "hasKey")
+	// 	object, _ := rdf.NewIRI(tablePrefix + data.tableName + colMiddle + data.colName)
+	// 	triple := rdf.Triple{
+	// 		Subj: subject,
+	// 		Pred: pred,
+	// 		Obj:  object,
+	// 	}
+	// 	triples = append(triples, triple)
+	// }
+
+	// for _, t := range triples {
+	// 	str := t.Serialize(rdf.NTriples)
+	// 	w.Write([]byte(str))
+	// }
+	return keys
+}
+
+func subsets(w io.Writer, entity string, keys []string) {
+	n := len(keys)
+	var subset = make([]string, 0, n)
+	triples := []rdf.Triple{}
+	var search func(int)
+	search = func(i int) {
+		if i == n {
+			if len(subset) == 2 {
+				subject, _ := rdf.NewIRI(tablePrefix + entity)
+				pred, _ := rdf.NewIRI(predPrefix + "hasCompoundKey")
+				object, _ := rdf.NewIRI(tablePrefix + entity + compoundMiddle + subset[0] + "/" + subset[1])
+				triple := rdf.Triple{
+					Subj: subject,
+					Pred: pred,
+					Obj:  object,
+				}
+				// triples = append(triples, triple)
+				// subject, _ := rdf.NewIRI(tablePrefix + entity + compoundMiddle + subset[0] + "/" + subset[1])
+				// pred, _ := rdf.NewIRI(predPrefix + "hasCompoundKey")
+				// object, _ := rdf.NewIRI(tablePrefix + entity + compoundMiddle + subset[0] + "/" + subset[1])
+				// triple := rdf.Triple{
+				// 	Subj: subject,
+				// 	Pred: pred,
+				// 	Obj:  object,
+				// }
+				// triples = append(triples, triple)
+
+				// subject, _ := rdf.NewIRI(tablePrefix + entity + compoundMiddle + subset[0] + "/" + subset[1])
+				// pred, _ := rdf.NewIRI(predPrefix + "hasCompoundKey")
+				// object, _ := rdf.NewIRI(tablePrefix + entity + compoundMiddle + subset[0] + "/" + subset[1])
+				// triple := rdf.Triple{
+				// 	Subj: subject,
+				// 	Pred: pred,
+				// 	Obj:  object,
+				// }
+				triples = append(triples, triple)
+
+			}
+			return
+		}
+		// include k in the subset
+		subset = append(subset, keys[i])
+		search(i + 1)
+		// dont include k in the subset
+		subset = subset[:len(subset)-1]
+		search(i + 1)
+	}
+
+	search(0)
 	for _, t := range triples {
 		str := t.Serialize(rdf.NTriples)
 		w.Write([]byte(str))
