@@ -321,8 +321,24 @@ func subsets(w io.Writer, counts map[string]int, entity string, keys []string) {
 					Obj:  object,
 				}
 				triples = append(triples, triple)
+				// if entity == "country_population" {
+				// fmt.Println(entity, subset[0], counts[entity+"/"+subset[0]], subset[1], counts[entity+"/"+subset[1]])
+				// 	isComplete(entity, subset[0], subset[1])
+				// }
 				switch {
-				case counts[entity+"/"+subset[0]] > counts[entity+"/"+subset[1]]:
+				case counts[entity+"/"+subset[0]] < counts[entity+"/"+subset[1]]:
+					if isComplete(entity, subset[0], subset[1]) {
+						subject, _ := rdf.NewIRI(tablePrefix + entity + compoundMiddle + subset[0] + "/" + subset[1])
+						pred, _ := rdf.NewIRI(predPrefix + "meetsCondition")
+						object, _ := rdf.NewIRI(complete)
+						triple := rdf.Triple{
+							Subj: subject,
+							Pred: pred,
+							Obj:  object,
+						}
+						triples = append(triples, triple)
+
+					}
 					subject, _ := rdf.NewIRI(tablePrefix + entity + compoundMiddle + subset[0] + "/" + subset[1])
 					pred, _ := rdf.NewIRI(predPrefix + "hasStrongKey")
 					object, _ := rdf.NewIRI(tablePrefix + entity + colMiddle + subset[0])
@@ -335,6 +351,38 @@ func subsets(w io.Writer, counts map[string]int, entity string, keys []string) {
 					subject, _ = rdf.NewIRI(tablePrefix + entity + compoundMiddle + subset[0] + "/" + subset[1])
 					pred, _ = rdf.NewIRI(predPrefix + "hasWeakKey")
 					object, _ = rdf.NewIRI(tablePrefix + entity + colMiddle + subset[1])
+					triple = rdf.Triple{
+						Subj: subject,
+						Pred: pred,
+						Obj:  object,
+					}
+					triples = append(triples, triple)
+
+				case counts[entity+"/"+subset[1]] < counts[entity+"/"+subset[0]]:
+					if isComplete(entity, subset[1], subset[0]) {
+						subject, _ := rdf.NewIRI(tablePrefix + entity + compoundMiddle + subset[1] + "/" + subset[0])
+						pred, _ := rdf.NewIRI(predPrefix + "meetsCondition")
+						object, _ := rdf.NewIRI(complete)
+						triple := rdf.Triple{
+							Subj: subject,
+							Pred: pred,
+							Obj:  object,
+						}
+						triples = append(triples, triple)
+
+					}
+					subject, _ := rdf.NewIRI(tablePrefix + entity + compoundMiddle + subset[1] + "/" + subset[0])
+					pred, _ := rdf.NewIRI(predPrefix + "hasStrongKey")
+					object, _ := rdf.NewIRI(tablePrefix + entity + colMiddle + subset[1])
+					triple := rdf.Triple{
+						Subj: subject,
+						Pred: pred,
+						Obj:  object,
+					}
+					triples = append(triples, triple)
+					subject, _ = rdf.NewIRI(tablePrefix + entity + compoundMiddle + subset[1] + "/" + subset[0])
+					pred, _ = rdf.NewIRI(predPrefix + "hasWeakKey")
+					object, _ = rdf.NewIRI(tablePrefix + entity + colMiddle + subset[0])
 					triple = rdf.Triple{
 						Subj: subject,
 						Pred: pred,
@@ -360,6 +408,45 @@ func subsets(w io.Writer, counts map[string]int, entity string, keys []string) {
 		w.Write([]byte(str))
 	}
 
+}
+
+func isComplete(entity string, key1 string, key2 string) bool {
+	q := `SELECT 
+		  ` + key1 + `,
+	          count(` + key2 + `)
+	FROM ` + entity + `
+        GROUP BY ` + key1 + `
+	`
+
+	rows, err := db.Query(q)
+	if err != nil {
+		fmt.Println(err)
+	}
+	defer rows.Close()
+	// fmt.Println("-----")
+	// fmt.Println(entity, key1, key2)
+	isFirst := true
+	i := 0
+	for rows.Next() {
+		var val1 string
+		var val2 int
+		err := rows.Scan(&val1, &val2)
+		if err != nil {
+			fmt.Println(err)
+		}
+		//		fmt.Println(val1, val2)
+		if isFirst {
+			i = val2
+			isFirst = false
+			continue
+		}
+		if val2 != i {
+			return false
+		}
+
+	}
+	//	fmt.Println("---------> Complete??")
+	return true
 }
 
 func writeColsDataType(w io.Writer) {
