@@ -39,6 +39,8 @@ const (
 	scalarDimension   = rootPrefix + "dimension/scalar"
 	similarCond       = rootPrefix + "cond/similar"
 	complete          = rootPrefix + "cond/complete"
+
+	similarHeuristic = 15
 )
 
 func init() {
@@ -327,10 +329,24 @@ func subsets(w io.Writer, counts map[string]int, entity string, keys []string) {
 				// }
 				switch {
 				case counts[entity+"/"+subset[0]] < counts[entity+"/"+subset[1]]:
-					if isComplete(entity, subset[0], subset[1]) {
+					psimilar, pcomplete := isSimilarIsComplete(entity, subset[0], subset[1])
+					if pcomplete {
 						subject, _ := rdf.NewIRI(tablePrefix + entity + compoundMiddle + subset[0] + "/" + subset[1])
 						pred, _ := rdf.NewIRI(predPrefix + "meetsCondition")
 						object, _ := rdf.NewIRI(complete)
+						triple := rdf.Triple{
+							Subj: subject,
+							Pred: pred,
+							Obj:  object,
+						}
+						triples = append(triples, triple)
+
+					}
+
+					if psimilar {
+						subject, _ := rdf.NewIRI(tablePrefix + entity + compoundMiddle + subset[0] + "/" + subset[1])
+						pred, _ := rdf.NewIRI(predPrefix + "meetsCondition")
+						object, _ := rdf.NewIRI(similarCond)
 						triple := rdf.Triple{
 							Subj: subject,
 							Pred: pred,
@@ -359,7 +375,8 @@ func subsets(w io.Writer, counts map[string]int, entity string, keys []string) {
 					triples = append(triples, triple)
 
 				case counts[entity+"/"+subset[1]] < counts[entity+"/"+subset[0]]:
-					if isComplete(entity, subset[1], subset[0]) {
+					psimilar, pcomplete := isSimilarIsComplete(entity, subset[1], subset[0])
+					if pcomplete {
 						subject, _ := rdf.NewIRI(tablePrefix + entity + compoundMiddle + subset[1] + "/" + subset[0])
 						pred, _ := rdf.NewIRI(predPrefix + "meetsCondition")
 						object, _ := rdf.NewIRI(complete)
@@ -369,8 +386,19 @@ func subsets(w io.Writer, counts map[string]int, entity string, keys []string) {
 							Obj:  object,
 						}
 						triples = append(triples, triple)
-
 					}
+					if psimilar {
+						subject, _ := rdf.NewIRI(tablePrefix + entity + compoundMiddle + subset[1] + "/" + subset[0])
+						pred, _ := rdf.NewIRI(predPrefix + "meetsCondition")
+						object, _ := rdf.NewIRI(similarCond)
+						triple := rdf.Triple{
+							Subj: subject,
+							Pred: pred,
+							Obj:  object,
+						}
+						triples = append(triples, triple)
+					}
+
 					subject, _ := rdf.NewIRI(tablePrefix + entity + compoundMiddle + subset[1] + "/" + subset[0])
 					pred, _ := rdf.NewIRI(predPrefix + "hasStrongKey")
 					object, _ := rdf.NewIRI(tablePrefix + entity + colMiddle + subset[1])
@@ -410,7 +438,7 @@ func subsets(w io.Writer, counts map[string]int, entity string, keys []string) {
 
 }
 
-func isComplete(entity string, key1 string, key2 string) bool {
+func isSimilarIsComplete(entity string, key1 string, key2 string) (bool, bool) {
 	q := `SELECT 
 		  ` + key1 + `,
 	          count(` + key2 + `)
@@ -426,6 +454,7 @@ func isComplete(entity string, key1 string, key2 string) bool {
 	// fmt.Println("-----")
 	// fmt.Println(entity, key1, key2)
 	isFirst := true
+	isSimilar := false
 	i := 0
 	for rows.Next() {
 		var val1 string
@@ -435,18 +464,21 @@ func isComplete(entity string, key1 string, key2 string) bool {
 			fmt.Println(err)
 		}
 		//		fmt.Println(val1, val2)
+		if val2 > similarHeuristic {
+			isSimilar = true
+		}
 		if isFirst {
 			i = val2
 			isFirst = false
 			continue
 		}
 		if val2 != i {
-			return false
+			return isSimilar, false
 		}
 
 	}
 	//	fmt.Println("---------> Complete??")
-	return true
+	return isSimilar, true
 }
 
 func writeColsDataType(w io.Writer) {
