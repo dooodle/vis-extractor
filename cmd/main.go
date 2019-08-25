@@ -9,6 +9,7 @@ import (
 	"io"
 	"log"
 	"os"
+	"strings"
 )
 
 // note file suffix for a n triple is .nt
@@ -40,7 +41,7 @@ const (
 	similarCond       = rootPrefix + "cond/similar"
 	complete          = rootPrefix + "cond/complete"
 
-	similarHeuristic = 3
+	similarHeuristic = 15
 )
 
 func init() {
@@ -149,7 +150,7 @@ func writeScalarOrDiscrete(w io.Writer, limit int) map[string]int {
 				if err != nil {
 					fmt.Println(err)
 				}
-			case data.dataType == "integer" || data.dataType == "numeric":
+			case !strings.Contains(data.colName,"latitude") && !strings.Contains(data.colName, "longitude") && (data.dataType == "integer" || data.dataType == "numeric"): // need a better way to exclude geo data like this
 				dObject, err = rdf.NewIRI(scalarDimension)
 				if err != nil {
 					fmt.Println(err)
@@ -387,7 +388,7 @@ func subsets(w io.Writer, counts map[string]int, entity string, keys []string) {
 						}
 						triples = append(triples, triple)
 					}
-					if psimilar {
+					if psimilar || subset[0] == "year" || subset[1] == "year"{
 						subject, _ := rdf.NewIRI(tablePrefix + entity + compoundMiddle + subset[1] + "/" + subset[0])
 						pred, _ := rdf.NewIRI(predPrefix + "meetsCondition")
 						object, _ := rdf.NewIRI(similarCond)
