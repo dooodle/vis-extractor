@@ -40,7 +40,7 @@ const (
 	similarCond       = rootPrefix + "cond/similar"
 	complete          = rootPrefix + "cond/complete"
 
-	similarHeuristic = 15
+	similarHeuristic = 3
 )
 
 func init() {
