@@ -33,6 +33,7 @@ const (
 	rootPrefix        = "http://dooodle/"
 	colMiddle         = "/column/"
 	compoundMiddle    = "/compound/"
+	one2mMiddle    	  = "/one2many/"
 	tablePrefix       = rootPrefix + "entity/"
 	predPrefix        = rootPrefix + "predicate/"
 	dataTypePrefix    = rootPrefix + "dataType/"
@@ -72,6 +73,7 @@ func main() {
 	counts := writeScalarOrDiscrete(w, 100)
 	writeKeys(w)
 	_ = writeCompoundKeys(w, counts)
+	writeOneToManyRels(w)
 	//	fmt.Println(keys)
 }
 
@@ -314,7 +316,7 @@ func writeCompoundKeys(w io.Writer, counts map[string]int) map[string][]string {
 		}
 
 		if len(v) > 1 {
-			subsets(w, counts, k, v)
+			subsetsForCompound(w, counts, k, v)
 		}
 	}
 	for _, t := range singleTriples {
@@ -323,8 +325,213 @@ func writeCompoundKeys(w io.Writer, counts map[string]int) map[string][]string {
 	}
 	return keys
 }
+
+func writeOneToManyRels(w io.Writer) map[string][]string {
+	//compare all possible cols for all tables
+	if *verbose {
+		log.Println("extracting one to many")
+	}
+	//q := `select tc.table_schema, tc.table_name, kc.column_name
+    //         from information_schema.table_constraints tc
+    //         join information_schema.key_column_usage kc
+    //         on kc.table_name = tc.table_name and kc.table_schema = tc.table_schema and kc.constraint_name = tc.constraint_name
+    //         where tc.constraint_type = 'PRIMARY KEY'
+    //         and kc.ordinal_position is not null
+    //         order by tc.table_schema,
+    //         tc.table_name,
+    //         kc.position_in_unique_constraint;`
+
+	q := `SELECT columns.table_name,
+		  columns.column_name
+	FROM information_schema.columns
+	LEFT JOIN information_schema.tables ON columns.table_name = tables.table_name
+	WHERE tables.table_schema = 'public' 
+	`
+
+	rows, _ := db.Query(q)
+
+	data := struct {
+		//tableSchema string
+		tableName   string
+		colName     string
+	}{}
+
+	defer rows.Close()
+
+	//collect the keys
+
+	keys := map[string][]string{}
+	for rows.Next() {
+		err := rows.Scan(&(data.tableName), &(data.colName))
+		if err != nil {
+			fmt.Println(err)
+		}
+		vals, ok := keys[data.tableName]
+		if !ok {
+			vals = []string{}
+		}
+		vals = append(vals, data.colName)
+		keys[data.tableName] = vals
+	}
+
+	singleTriples := []rdf.Triple{}
+	for k, v := range keys {
+		if len(v) > 1 {
+			subsetsForOneToMany(w, k, v)
+		}
+	}
+	for _, t := range singleTriples {
+		str := t.Serialize(rdf.NTriples)
+		w.Write([]byte(str))
+	}
+	return keys
+}
+
+func subsetsForOneToMany(w io.Writer, entity string, keys []string) {
+	if *verbose {
+		log.Printf("entering subset streamer for %s:%v",entity,keys)
+	}
+	n := len(keys)
+	var subset = make([]string, 0, n)
+	triples := []rdf.Triple{}
+	var search func(int)
+	search = func(i int) {
+		if i == n {
+			if len(subset) == 2 {
+				writeOneToManyItem(w, entity, subset[0], subset[1])
+			}
+			return
+		}
+		// include k in the subset
+		subset = append(subset, keys[i])
+		search(i + 1)
+		// dont include k in the subset
+		subset = subset[:len(subset)-1]
+		search(i + 1)
+	}
+
+	search(0)
+	for _, t := range triples {
+		str := t.Serialize(rdf.NTriples)
+		w.Write([]byte(str))
+	}
+
+}
+
 //select iata_code, count(distinct city)  from airport group by iata_code having count(distinct city) > 1;
-func subsets(w io.Writer, counts map[string]int, entity string, keys []string) {
+//select max(output) from (select iata_code, count(distinct city) as output from airport group by iata_code) as Derived ;
+func writeOneToManyItem(w io.Writer, entity string, col1 string, col2 string) {
+	if *verbose {
+		log.Printf("entering one to many checker for %s:%s,%s",entity,col1,col2)
+	}
+
+	q1 := fmt.Sprintf("select max(output) from (select %s, count(distinct %s) as output from %s group by %s) as Derived",col1,col2,entity,col1)
+	q2 := fmt.Sprintf("select max(output) from (select %s, count(distinct %s) as output from %s group by %s) as Derived",col2,col1,entity,col2)
+
+	i1,i2 := 0,0
+	rows1, err := db.Query(q1)
+	if err != nil {
+		fmt.Println(err)
+	}
+	rows2, err := db.Query(q2)
+	if err != nil {
+		fmt.Println(err)
+	}
+	defer rows1.Close()
+	defer rows2.Close()
+
+	for rows1.Next() {
+		err := rows1.Scan(&i1)
+		if err != nil && *verbose { // could be null
+			fmt.Println(err)
+		}
+	}
+
+	for rows2.Next() {
+		err := rows2.Scan(&i2)
+		if err != nil && *verbose { // could be null
+			fmt.Println(err)
+		}
+	}
+	triples := []rdf.Triple{}
+	if *verbose {
+		log.Printf("%s -> %v",col1,i1)
+		log.Printf("%s -> %v",col2,i2)
+	}
+	switch {
+	//one to many key relationships
+	case i1 == 1 && i2 > 1 :
+		subject, _ := rdf.NewIRI(tablePrefix + entity)
+		pred, _ := rdf.NewIRI(predPrefix + "hasOne2ManyKey")
+		object, _ := rdf.NewIRI(tablePrefix + entity + one2mMiddle + col2 + "/" + col1)
+		triple := rdf.Triple{
+			Subj: subject,
+			Pred: pred,
+			Obj:  object,
+		}
+		triples = append(triples, triple)
+		subjectOne, _ := rdf.NewIRI(tablePrefix + entity + one2mMiddle + col2 + "/" + col1)
+		predOne, _ := rdf.NewIRI(predPrefix + "hasOneKey")
+		objectOne, _  := rdf.NewIRI(tablePrefix + entity + colMiddle + col2)
+		tripleOne := rdf.Triple{
+			Subj: subjectOne,
+			Pred: predOne,
+			Obj:  objectOne,
+		}
+		triples = append(triples, tripleOne)
+		subjectMany, _ := rdf.NewIRI(tablePrefix + entity + one2mMiddle + col2 + "/" + col1)
+		predMany, _ := rdf.NewIRI(predPrefix + "hasManyKey")
+		objectMany, _  := rdf.NewIRI(tablePrefix + entity + colMiddle + col1)
+		tripleMany := rdf.Triple{
+			Subj: subjectMany,
+			Pred: predMany,
+			Obj:  objectMany,
+		}
+		triples = append(triples, tripleMany)
+
+
+	case i2 == 1 && i1 > 1 :
+		subject, _ := rdf.NewIRI(tablePrefix + entity)
+		pred, _ := rdf.NewIRI(predPrefix + "hasOne2ManyKey")
+		object, _ := rdf.NewIRI(tablePrefix + entity + one2mMiddle + col1 + "/" + col2)
+		triple := rdf.Triple{
+			Subj: subject,
+			Pred: pred,
+			Obj:  object,
+		}
+		triples = append(triples, triple)
+		subjectOne, _ := rdf.NewIRI(tablePrefix + entity + one2mMiddle + col1 + "/" + col2)
+		predOne, _ := rdf.NewIRI(predPrefix + "hasOneKey")
+		objectOne, _  := rdf.NewIRI(tablePrefix + entity + colMiddle + col1)
+		tripleOne := rdf.Triple{
+			Subj: subjectOne,
+			Pred: predOne,
+			Obj:  objectOne,
+		}
+		triples = append(triples, tripleOne)
+		subjectMany, _ := rdf.NewIRI(tablePrefix + entity + one2mMiddle + col1 + "/" + col2)
+		predMany, _ := rdf.NewIRI(predPrefix + "hasManyKey")
+		objectMany, _  := rdf.NewIRI(tablePrefix + entity + colMiddle + col2)
+		tripleMany := rdf.Triple{
+			Subj: subjectMany,
+			Pred: predMany,
+			Obj:  objectMany,
+		}
+		triples = append(triples, tripleMany)
+		// many to many key relatioships
+	case i1 > 1 && i2 > 1 :
+
+	}
+
+	for _, t := range triples {
+		str := t.Serialize(rdf.NTriples)
+		w.Write([]byte(str))
+	}
+
+
+}
+
+func subsetsForCompound(w io.Writer, counts map[string]int, entity string, keys []string) {
 	n := len(keys)
 	var subset = make([]string, 0, n)
 	triples := []rdf.Triple{}
