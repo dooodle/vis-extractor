@@ -297,16 +297,33 @@ func writeCompoundKeys(w io.Writer, counts map[string]int) map[string][]string {
 		keys[data.tableName] = vals
 	}
 
+	singleTriples := []rdf.Triple{}
 	for k, v := range keys {
 		// need to write out all possible poirs of keys
+		if len(v) == 1 {
+			//single key
+			subject, _ := rdf.NewIRI(tablePrefix + k)
+			pred, _ := rdf.NewIRI(predPrefix + "hasSingleKey")
+			object, _ := rdf.NewIRI(tablePrefix + k + colMiddle + v[0])
+			triple := rdf.Triple{
+				Subj: subject,
+				Pred: pred,
+				Obj:  object,
+			}
+			singleTriples = append(singleTriples, triple)
+		}
+
 		if len(v) > 1 {
 			subsets(w, counts, k, v)
 		}
 	}
-
+	for _, t := range singleTriples {
+		str := t.Serialize(rdf.NTriples)
+		w.Write([]byte(str))
+	}
 	return keys
 }
-
+//select iata_code, count(distinct city)  from airport group by iata_code having count(distinct city) > 1;
 func subsets(w io.Writer, counts map[string]int, entity string, keys []string) {
 	n := len(keys)
 	var subset = make([]string, 0, n)
