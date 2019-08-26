@@ -34,6 +34,7 @@ const (
 	colMiddle         = "/column/"
 	compoundMiddle    = "/compound/"
 	one2mMiddle    	  = "/one2many/"
+	m2mMiddle    	  = "/many2many/"
 	tablePrefix       = rootPrefix + "entity/"
 	predPrefix        = rootPrefix + "predicate/"
 	dataTypePrefix    = rootPrefix + "dataType/"
@@ -73,7 +74,7 @@ func main() {
 	counts := writeScalarOrDiscrete(w, 100)
 	writeKeys(w)
 	_ = writeCompoundKeys(w, counts)
-	writeOneToManyRels(w)
+	writeOneOrManyToManyRels(w)
 	//	fmt.Println(keys)
 }
 
@@ -326,7 +327,7 @@ func writeCompoundKeys(w io.Writer, counts map[string]int) map[string][]string {
 	return keys
 }
 
-func writeOneToManyRels(w io.Writer) map[string][]string {
+func writeOneOrManyToManyRels(w io.Writer) map[string][]string {
 	//compare all possible cols for all tables
 	if *verbose {
 		log.Println("extracting one to many")
@@ -377,7 +378,7 @@ func writeOneToManyRels(w io.Writer) map[string][]string {
 	singleTriples := []rdf.Triple{}
 	for k, v := range keys {
 		if len(v) > 1 {
-			subsetsForOneToMany(w, k, v)
+			subsetsForOneOrManyToMany(w, k, v)
 		}
 	}
 	for _, t := range singleTriples {
@@ -387,7 +388,7 @@ func writeOneToManyRels(w io.Writer) map[string][]string {
 	return keys
 }
 
-func subsetsForOneToMany(w io.Writer, entity string, keys []string) {
+func subsetsForOneOrManyToMany(w io.Writer, entity string, keys []string) {
 	if *verbose {
 		log.Printf("entering subset streamer for %s:%v",entity,keys)
 	}
@@ -398,7 +399,7 @@ func subsetsForOneToMany(w io.Writer, entity string, keys []string) {
 	search = func(i int) {
 		if i == n {
 			if len(subset) == 2 {
-				writeOneToManyItem(w, entity, subset[0], subset[1])
+				writeOneOrManyToManyItem(w, entity, subset[0], subset[1])
 			}
 			return
 		}
@@ -420,7 +421,7 @@ func subsetsForOneToMany(w io.Writer, entity string, keys []string) {
 
 //select iata_code, count(distinct city)  from airport group by iata_code having count(distinct city) > 1;
 //select max(output) from (select iata_code, count(distinct city) as output from airport group by iata_code) as Derived ;
-func writeOneToManyItem(w io.Writer, entity string, col1 string, col2 string) {
+func writeOneOrManyToManyItem(w io.Writer, entity string, col1 string, col2 string) {
 	if *verbose {
 		log.Printf("entering one to many checker for %s:%s,%s",entity,col1,col2)
 	}
@@ -520,7 +521,34 @@ func writeOneToManyItem(w io.Writer, entity string, col1 string, col2 string) {
 		triples = append(triples, tripleMany)
 		// many to many key relatioships
 	case i1 > 1 && i2 > 1 :
-
+		subject, _ := rdf.NewIRI(tablePrefix + entity)
+		pred, _ := rdf.NewIRI(predPrefix + "hasMany2ManyKey")
+		object, _ := rdf.NewIRI(tablePrefix + entity + m2mMiddle + col1 + "/" + col2)
+		triple := rdf.Triple{
+			Subj: subject,
+			Pred: pred,
+			Obj:  object,
+		}
+		triples = append(triples, triple)
+		triples = append(triples, triple)
+		subjectManyOne, _ := rdf.NewIRI(tablePrefix + entity + m2mMiddle + col1 + "/" + col2)
+		predManyOne, _ := rdf.NewIRI(predPrefix + "hasManyKey")
+		objectManyOne, _  := rdf.NewIRI(tablePrefix + entity + colMiddle + col1)
+		tripleManyOne := rdf.Triple{
+			Subj: subjectManyOne,
+			Pred: predManyOne,
+			Obj:  objectManyOne,
+		}
+		triples = append(triples, tripleManyOne)
+		subjectManyTwo, _ := rdf.NewIRI(tablePrefix + entity + m2mMiddle + col1 + "/" + col2)
+		predManyTwo, _ := rdf.NewIRI(predPrefix + "hasManyKey")
+		objectManyTwo, _  := rdf.NewIRI(tablePrefix + entity + colMiddle + col2)
+		tripleManyTwo := rdf.Triple{
+			Subj: subjectManyTwo,
+			Pred: predManyTwo,
+			Obj:  objectManyTwo,
+		}
+		triples = append(triples, tripleManyTwo)
 	}
 
 	for _, t := range triples {
