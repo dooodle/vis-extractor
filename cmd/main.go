@@ -567,6 +567,151 @@ func subsetsForCompound(w io.Writer, counts map[string]int, entity string, keys 
 	search = func(i int) {
 		if i == n {
 			if len(subset) == 2 {
+				writeCompoundItem(w , entity, subset[0],subset[1])
+			}
+			return
+		}
+		// include k in the subset
+		subset = append(subset, keys[i])
+		search(i + 1)
+		// dont include k in the subset
+		subset = subset[:len(subset)-1]
+		search(i + 1)
+	}
+
+	search(0)
+	for _, t := range triples {
+		str := t.Serialize(rdf.NTriples)
+		w.Write([]byte(str))
+	}
+}
+
+func writeCompoundItem(w io.Writer, entity string, col1 string, col2 string) {
+	if *verbose {
+		log.Printf("entering one to many checker for %s:%s,%s",entity,col1,col2)
+	}
+
+	q1 := fmt.Sprintf("select max(output) from (select %s, count(distinct %s) as output from %s group by %s) as Derived",col1,col2,entity,col1)
+	q2 := fmt.Sprintf("select max(output) from (select %s, count(distinct %s) as output from %s group by %s) as Derived",col2,col1,entity,col2)
+
+	i1,i2 := 0,0
+	rows1, err := db.Query(q1)
+	if err != nil {
+		fmt.Println(err)
+	}
+	rows2, err := db.Query(q2)
+	if err != nil {
+		fmt.Println(err)
+	}
+	defer rows1.Close()
+	defer rows2.Close()
+
+	for rows1.Next() {
+		err := rows1.Scan(&i1)
+		if err != nil && *verbose { // could be null
+			fmt.Println(err)
+		}
+	}
+
+	for rows2.Next() {
+		err := rows2.Scan(&i2)
+		if err != nil && *verbose { // could be null
+			fmt.Println(err)
+		}
+	}
+	triples := []rdf.Triple{}
+	if *verbose {
+		log.Printf("%s -> %v",col1,i1)
+		log.Printf("%s -> %v",col2,i2)
+	}
+	//log.Printf("compound checker for %s:%s->%d,%s->%d",entity,col1,i1,col2,i2)
+	switch {
+	//one to many key relationships
+	case i1 >= 10 &&  i2 >=10 && i1 < i2 :
+		if *verbose {
+			log.Printf(" in check :: compound checker for %s:%s->%d,%s->%d", entity, col1, i1, col2, i2)
+		}
+		subject, _ := rdf.NewIRI(tablePrefix + entity)
+		pred, _ := rdf.NewIRI(predPrefix + "hasCompoundKey")
+		object, _ := rdf.NewIRI(tablePrefix + entity + compoundMiddle + col1 + "/" + col2)
+		triple := rdf.Triple{
+			Subj: subject,
+			Pred: pred,
+			Obj:  object,
+		}
+		triples = append(triples, triple)
+		subjectOne, _ := rdf.NewIRI(tablePrefix + entity + compoundMiddle + col1 + "/" + col2)
+		predOne, _ := rdf.NewIRI(predPrefix + "hasStrongKey")
+		objectOne, _  := rdf.NewIRI(tablePrefix + entity + colMiddle + col1)
+		tripleOne := rdf.Triple{
+			Subj: subjectOne,
+			Pred: predOne,
+			Obj:  objectOne,
+		}
+		triples = append(triples, tripleOne)
+		subjectMany, _ := rdf.NewIRI(tablePrefix + entity + compoundMiddle + col1 + "/" + col2)
+		predMany, _ := rdf.NewIRI(predPrefix + "hasWeakKey")
+		objectMany, _  := rdf.NewIRI(tablePrefix + entity + colMiddle + col2)
+		tripleMany := rdf.Triple{
+			Subj: subjectMany,
+			Pred: predMany,
+			Obj:  objectMany,
+		}
+		triples = append(triples, tripleMany)
+
+
+	case i1 >= 10 &&  i2 >=10 && i1 > i2 :
+		if *verbose {
+			log.Printf(" in check :: compound checker for %s:%s->%d,%s->%d", entity, col1, i1, col2, i2)
+		}
+		subject, _ := rdf.NewIRI(tablePrefix + entity)
+		pred, _ := rdf.NewIRI(predPrefix + "hasCompoundKey")
+		object, _ := rdf.NewIRI(tablePrefix + entity + compoundMiddle + col2 + "/" + col1)
+		triple := rdf.Triple{
+			Subj: subject,
+			Pred: pred,
+			Obj:  object,
+		}
+		triples = append(triples, triple)
+		subjectOne, _ := rdf.NewIRI(tablePrefix + entity + compoundMiddle + col2 + "/" + col1)
+		predOne, _ := rdf.NewIRI(predPrefix + "hasStrongKey")
+		objectOne, _  := rdf.NewIRI(tablePrefix + entity + colMiddle + col2)
+		tripleOne := rdf.Triple{
+			Subj: subjectOne,
+			Pred: predOne,
+			Obj:  objectOne,
+		}
+		triples = append(triples, tripleOne)
+		subjectMany, _ := rdf.NewIRI(tablePrefix + entity + compoundMiddle + col2 + "/" + col1)
+		predMany, _ := rdf.NewIRI(predPrefix + "hasWeakKey")
+		objectMany, _  := rdf.NewIRI(tablePrefix + entity + colMiddle + col1)
+		tripleMany := rdf.Triple{
+			Subj: subjectMany,
+			Pred: predMany,
+			Obj:  objectMany,
+		}
+		triples = append(triples, tripleMany)
+		// many to many key relatioships
+	case i1 > 1 && i2 > 1 :
+		//no op
+	}
+
+	for _, t := range triples {
+		str := t.Serialize(rdf.NTriples)
+		w.Write([]byte(str))
+	}
+
+
+}
+
+func subsetsForCompoundOld(w io.Writer, counts map[string]int, entity string, keys []string) {
+	n := len(keys)
+	var subset = make([]string, 0, n)
+	triples := []rdf.Triple{}
+	var search func(int)
+	search = func(i int) {
+		if i == n {
+			if len(subset) == 2 {
 				subject, _ := rdf.NewIRI(tablePrefix + entity)
 				pred, _ := rdf.NewIRI(predPrefix + "hasCompoundKey")
 				object, _ := rdf.NewIRI(tablePrefix + entity + compoundMiddle + subset[0] + "/" + subset[1])
