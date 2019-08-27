@@ -625,21 +625,21 @@ func writeCompoundItem(w io.Writer, entity string, col1 string, col2 string) {
 		log.Printf("%s -> %v",col2,i2)
 	}
 	//log.Printf("compound checker for %s:%s->%d,%s->%d",entity,col1,i1,col2,i2)
+	subject, _ := rdf.NewIRI(tablePrefix + entity)
+	pred, _ := rdf.NewIRI(predPrefix + "hasCompoundKey")
+	object, _ := rdf.NewIRI(tablePrefix + entity + compoundMiddle + col1 + "/" + col2)
+	triple := rdf.Triple{
+		Subj: subject,
+		Pred: pred,
+		Obj:  object,
+	}
+	triples = append(triples, triple)
 	switch {
 	//one to many key relationships
 	case i1 >= 10 &&  i2 >=10 && i1 < i2 :
 		if *verbose {
 			log.Printf(" in check :: compound checker for %s:%s->%d,%s->%d", entity, col1, i1, col2, i2)
 		}
-		subject, _ := rdf.NewIRI(tablePrefix + entity)
-		pred, _ := rdf.NewIRI(predPrefix + "hasCompoundKey")
-		object, _ := rdf.NewIRI(tablePrefix + entity + compoundMiddle + col1 + "/" + col2)
-		triple := rdf.Triple{
-			Subj: subject,
-			Pred: pred,
-			Obj:  object,
-		}
-		triples = append(triples, triple)
 		subjectOne, _ := rdf.NewIRI(tablePrefix + entity + compoundMiddle + col1 + "/" + col2)
 		predOne, _ := rdf.NewIRI(predPrefix + "hasStrongKey")
 		objectOne, _  := rdf.NewIRI(tablePrefix + entity + colMiddle + col1)
@@ -664,16 +664,7 @@ func writeCompoundItem(w io.Writer, entity string, col1 string, col2 string) {
 		if *verbose {
 			log.Printf(" in check :: compound checker for %s:%s->%d,%s->%d", entity, col1, i1, col2, i2)
 		}
-		subject, _ := rdf.NewIRI(tablePrefix + entity)
-		pred, _ := rdf.NewIRI(predPrefix + "hasCompoundKey")
-		object, _ := rdf.NewIRI(tablePrefix + entity + compoundMiddle + col2 + "/" + col1)
-		triple := rdf.Triple{
-			Subj: subject,
-			Pred: pred,
-			Obj:  object,
-		}
-		triples = append(triples, triple)
-		subjectOne, _ := rdf.NewIRI(tablePrefix + entity + compoundMiddle + col2 + "/" + col1)
+		subjectOne, _ := rdf.NewIRI(tablePrefix + entity + compoundMiddle + col1 + "/" + col2)
 		predOne, _ := rdf.NewIRI(predPrefix + "hasStrongKey")
 		objectOne, _  := rdf.NewIRI(tablePrefix + entity + colMiddle + col2)
 		tripleOne := rdf.Triple{
@@ -682,7 +673,7 @@ func writeCompoundItem(w io.Writer, entity string, col1 string, col2 string) {
 			Obj:  objectOne,
 		}
 		triples = append(triples, tripleOne)
-		subjectMany, _ := rdf.NewIRI(tablePrefix + entity + compoundMiddle + col2 + "/" + col1)
+		subjectMany, _ := rdf.NewIRI(tablePrefix + entity + compoundMiddle + col1 + "/" + col2)
 		predMany, _ := rdf.NewIRI(predPrefix + "hasWeakKey")
 		objectMany, _  := rdf.NewIRI(tablePrefix + entity + colMiddle + col1)
 		tripleMany := rdf.Triple{
