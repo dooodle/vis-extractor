@@ -14,7 +14,7 @@ func TestSubSets(t *testing.T) {
 		str := fmt.Sprintf("%s%s ",k1,k2)
 		w.Write([]byte(str))
 	}
-	subsetsForCompound(&buf,nil,"test_entity",keys,f)
+	subsetsForCompound(&buf,"test_entity",keys,f)
 	want := "ab ac ad bc bd cd "
 	if buf.String() != want {
 		t.Errorf("wanted %s got %s",want,buf.String())

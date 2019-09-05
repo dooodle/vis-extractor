@@ -317,7 +317,7 @@ func writeCompoundKeys(w io.Writer, counts map[string]int) map[string][]string {
 		}
 
 		if len(v) > 1 {
-			subsetsForCompound(w, counts, k, v, writeCompoundItem)
+			subsetsForCompound(w, k, v, writeCompoundItem)
 		}
 	}
 	for _, t := range singleTriples {
@@ -559,7 +559,7 @@ func writeOneOrManyToManyItem(w io.Writer, entity string, col1 string, col2 stri
 
 }
 
-func subsetsForCompound(w io.Writer, counts map[string]int, entity string, keys []string, f func(io.Writer, string, string, string)) {
+func subsetsForCompound(w io.Writer, entity string, keys []string, f func(io.Writer, string, string, string)) {
 	n := len(keys)
 	var subset = make([]string, 0, n)
 	triples := []rdf.Triple{}
