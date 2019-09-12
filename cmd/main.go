@@ -16,6 +16,7 @@ import (
 var fileName = flag.String("f", "", "filename to save N-Triple DB")
 var verbose = flag.Bool("v", false, "output extra logging")
 
+// useful reading material
 // https://newfivefour.com/postgresql-information-schema.html
 // https://www.w3.org/TR/n-triples/
 // https://en.wikipedia.org/wiki/N-Triples
@@ -47,7 +48,8 @@ const (
 )
 
 func init() {
-	connStr := fmt.Sprintf("user=%s dbname=%s password=%s host=%s port=%s sslmode=%s", user, dbname, password, host, port, sslmode)
+	connStr := fmt.Sprintf("user=%s dbname=%s password=%s host=%s port=%s sslmode=%s",
+		user, dbname, password, host, port, sslmode)
 	var err error
 	db, err = sql.Open("postgres", connStr)
 	if err != nil {
@@ -69,15 +71,16 @@ func main() {
 	if *verbose {
 		fmt.Printf("starting db graph extractor for %s on %s:%s\n", dbname, host, port)
 	}
+	//write out the triples
 	writeTableColS(w)
 	writeColsDataType(w)
 	counts := writeScalarOrDiscrete(w, 100)
 	writeKeys(w)
 	_ = writeCompoundKeys(w, counts)
 	writeOneOrManyToManyRels(w)
-	//	fmt.Println(keys)
 }
 
+//some reference definitions from the principal paper.
 //– discrete dimensions have a relatively small number of distinct values, that
 //may nor may not have a natural ordering; they are used to choose a mark
 //or to vary a channel of a mark.
@@ -88,12 +91,6 @@ func main() {
 //when extracting use limit to decide if its scalar or discrete
 func writeScalarOrDiscrete(w io.Writer, limit int) map[string]int {
 	counts := map[string]int{}
-	// q := `SELECT columns.table_name,
-	// 	  columns.column_name
-	// FROM information_schema.columns
-	// LEFT JOIN information_schema.tables ON columns.table_name = tables.table_name
-	// WHERE tables.table_schema = 'public'
-	// `
 	q := `SELECT 
 		  columns.table_name,
 		  columns.column_name,
@@ -332,15 +329,6 @@ func writeOneOrManyToManyRels(w io.Writer) map[string][]string {
 	if *verbose {
 		log.Println("extracting one to many")
 	}
-	//q := `select tc.table_schema, tc.table_name, kc.column_name
-    //         from information_schema.table_constraints tc
-    //         join information_schema.key_column_usage kc
-    //         on kc.table_name = tc.table_name and kc.table_schema = tc.table_schema and kc.constraint_name = tc.constraint_name
-    //         where tc.constraint_type = 'PRIMARY KEY'
-    //         and kc.ordinal_position is not null
-    //         order by tc.table_schema,
-    //         tc.table_name,
-    //         kc.position_in_unique_constraint;`
 
 	q := `SELECT columns.table_name,
 		  columns.column_name
@@ -352,7 +340,6 @@ func writeOneOrManyToManyRels(w io.Writer) map[string][]string {
 	rows, _ := db.Query(q)
 
 	data := struct {
-		//tableSchema string
 		tableName   string
 		colName     string
 	}{}
@@ -360,7 +347,6 @@ func writeOneOrManyToManyRels(w io.Writer) map[string][]string {
 	defer rows.Close()
 
 	//collect the keys
-
 	keys := map[string][]string{}
 	for rows.Next() {
 		err := rows.Scan(&(data.tableName), &(data.colName))
@@ -419,6 +405,7 @@ func subsetsForOneOrManyToMany(w io.Writer, entity string, keys []string) {
 
 }
 
+//example sql
 //select iata_code, count(distinct city)  from airport group by iata_code having count(distinct city) > 1;
 //select max(output) from (select iata_code, count(distinct city) as output from airport group by iata_code) as Derived ;
 func writeOneOrManyToManyItem(w io.Writer, entity string, col1 string, col2 string) {
@@ -624,7 +611,7 @@ func writeCompoundItem(w io.Writer, entity string, col1 string, col2 string) {
 		log.Printf("%s -> %v",col1,i1)
 		log.Printf("%s -> %v",col2,i2)
 	}
-	//log.Printf("compound checker for %s:%s->%d,%s->%d",entity,col1,i1,col2,i2)
+
 	subject, _ := rdf.NewIRI(tablePrefix + entity)
 	pred, _ := rdf.NewIRI(predPrefix + "hasCompoundKey")
 	object, _ := rdf.NewIRI(tablePrefix + entity + compoundMiddle + col1 + "/" + col2)
@@ -692,138 +679,6 @@ func writeCompoundItem(w io.Writer, entity string, col1 string, col2 string) {
 		w.Write([]byte(str))
 	}
 
-
-}
-
-func subsetsForCompoundOld(w io.Writer, counts map[string]int, entity string, keys []string) {
-	n := len(keys)
-	var subset = make([]string, 0, n)
-	triples := []rdf.Triple{}
-	var search func(int)
-	search = func(i int) {
-		if i == n {
-			if len(subset) == 2 {
-				subject, _ := rdf.NewIRI(tablePrefix + entity)
-				pred, _ := rdf.NewIRI(predPrefix + "hasCompoundKey")
-				object, _ := rdf.NewIRI(tablePrefix + entity + compoundMiddle + subset[0] + "/" + subset[1])
-				triple := rdf.Triple{
-					Subj: subject,
-					Pred: pred,
-					Obj:  object,
-				}
-				triples = append(triples, triple)
-				// if entity == "country_population" {
-				// fmt.Println(entity, subset[0], counts[entity+"/"+subset[0]], subset[1], counts[entity+"/"+subset[1]])
-				// 	isComplete(entity, subset[0], subset[1])
-				// }
-				switch {
-				case counts[entity+"/"+subset[0]] < counts[entity+"/"+subset[1]]:
-					psimilar, pcomplete := isSimilarIsComplete(entity, subset[0], subset[1])
-					if pcomplete {
-						subject, _ := rdf.NewIRI(tablePrefix + entity + compoundMiddle + subset[0] + "/" + subset[1])
-						pred, _ := rdf.NewIRI(predPrefix + "meetsCondition")
-						object, _ := rdf.NewIRI(complete)
-						triple := rdf.Triple{
-							Subj: subject,
-							Pred: pred,
-							Obj:  object,
-						}
-						triples = append(triples, triple)
-
-					}
-
-					if psimilar {
-						subject, _ := rdf.NewIRI(tablePrefix + entity + compoundMiddle + subset[0] + "/" + subset[1])
-						pred, _ := rdf.NewIRI(predPrefix + "meetsCondition")
-						object, _ := rdf.NewIRI(similarCond)
-						triple := rdf.Triple{
-							Subj: subject,
-							Pred: pred,
-							Obj:  object,
-						}
-						triples = append(triples, triple)
-
-					}
-					subject, _ := rdf.NewIRI(tablePrefix + entity + compoundMiddle + subset[0] + "/" + subset[1])
-					pred, _ := rdf.NewIRI(predPrefix + "hasStrongKey")
-					object, _ := rdf.NewIRI(tablePrefix + entity + colMiddle + subset[0])
-					triple := rdf.Triple{
-						Subj: subject,
-						Pred: pred,
-						Obj:  object,
-					}
-					triples = append(triples, triple)
-					subject, _ = rdf.NewIRI(tablePrefix + entity + compoundMiddle + subset[0] + "/" + subset[1])
-					pred, _ = rdf.NewIRI(predPrefix + "hasWeakKey")
-					object, _ = rdf.NewIRI(tablePrefix + entity + colMiddle + subset[1])
-					triple = rdf.Triple{
-						Subj: subject,
-						Pred: pred,
-						Obj:  object,
-					}
-					triples = append(triples, triple)
-
-				case counts[entity+"/"+subset[1]] < counts[entity+"/"+subset[0]]:
-					psimilar, pcomplete := isSimilarIsComplete(entity, subset[1], subset[0])
-					if pcomplete {
-						subject, _ := rdf.NewIRI(tablePrefix + entity + compoundMiddle + subset[1] + "/" + subset[0])
-						pred, _ := rdf.NewIRI(predPrefix + "meetsCondition")
-						object, _ := rdf.NewIRI(complete)
-						triple := rdf.Triple{
-							Subj: subject,
-							Pred: pred,
-							Obj:  object,
-						}
-						triples = append(triples, triple)
-					}
-					if psimilar || subset[0] == "year" || subset[1] == "year"{
-						subject, _ := rdf.NewIRI(tablePrefix + entity + compoundMiddle + subset[1] + "/" + subset[0])
-						pred, _ := rdf.NewIRI(predPrefix + "meetsCondition")
-						object, _ := rdf.NewIRI(similarCond)
-						triple := rdf.Triple{
-							Subj: subject,
-							Pred: pred,
-							Obj:  object,
-						}
-						triples = append(triples, triple)
-					}
-
-					subject, _ := rdf.NewIRI(tablePrefix + entity + compoundMiddle + subset[1] + "/" + subset[0])
-					pred, _ := rdf.NewIRI(predPrefix + "hasStrongKey")
-					object, _ := rdf.NewIRI(tablePrefix + entity + colMiddle + subset[1])
-					triple := rdf.Triple{
-						Subj: subject,
-						Pred: pred,
-						Obj:  object,
-					}
-					triples = append(triples, triple)
-					subject, _ = rdf.NewIRI(tablePrefix + entity + compoundMiddle + subset[1] + "/" + subset[0])
-					pred, _ = rdf.NewIRI(predPrefix + "hasWeakKey")
-					object, _ = rdf.NewIRI(tablePrefix + entity + colMiddle + subset[0])
-					triple = rdf.Triple{
-						Subj: subject,
-						Pred: pred,
-						Obj:  object,
-					}
-					triples = append(triples, triple)
-
-				}
-			}
-			return
-		}
-		// include k in the subset
-		subset = append(subset, keys[i])
-		search(i + 1)
-		// dont include k in the subset
-		subset = subset[:len(subset)-1]
-		search(i + 1)
-	}
-
-	search(0)
-	for _, t := range triples {
-		str := t.Serialize(rdf.NTriples)
-		w.Write([]byte(str))
-	}
 
 }
 
@@ -899,7 +754,6 @@ func writeColsDataType(w io.Writer) {
 		if err != nil {
 			fmt.Println(err)
 		}
-		//		fmt.Println(data.colName, data.dataType)
 
 		subject, _ := rdf.NewIRI(tablePrefix + data.tableName + colMiddle + data.colName)
 		pred, _ := rdf.NewIRI(predPrefix + "hasDataType")
